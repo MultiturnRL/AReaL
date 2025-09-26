@@ -96,7 +96,7 @@ train_dataset:
   shuffle: true
   pin_memory: true
   num_workers: 4
-  path: openai/gsm8k
+  path: MultiturnRL/training-dataset
   type: rl
   max_length: 1024
 
@@ -105,7 +105,7 @@ valid_dataset:
   shuffle: true
   pin_memory: true
   num_workers: 4
-  path: openai/gsm8k
+  path: MultiturnRL/training-dataset
   type: rl
 
 # Utilities
