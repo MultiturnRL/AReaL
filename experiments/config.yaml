@@ -2,12 +2,12 @@ experiment_name: multiturn-grpo
 trial_name: trial0
 allocation_mode: sglang.d4p1t1+d4p1t1
 cluster:
-  fileroot: /tmp/areal/experiments
+  fileroot: /opt/dlami/nvme/exp
   n_nodes: 1
   n_gpus_per_node: 8
   name_resolve:
     type: nfs
-    nfs_record_root: /tmp/areal/name_resolve
+    nfs_record_root: /opt/dlami/nvme/name_resolve
 seed: 1
 total_train_epochs: 10
 tokenizer_path: ${actor.path}
@@ -150,5 +150,5 @@ launcher:
 sandbox_control_plane: http://a8b4ee4606659412ca97fd13254655e1-1667785203.us-west-2.elb.amazonaws.com
 sandbox_gateway: http://a8ba3420c90c64b2da804891c7d96d2f-2109523366.us-west-2.elb.amazonaws.com
 sandbox_fusion_url: http://localhost:8080/run_code
-sandbox_image_override: timemagic/rl-mcp:general-1.6
+sandbox_image_override: timemagic/rl-mcp:general-1.7
 max_turns: 100

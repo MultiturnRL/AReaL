@@ -48,10 +48,19 @@ def get_dataset(
     tokenizer: Optional["PreTrainedTokenizerFast"] = None,
     processor: Optional["ProcessorMixin"] = None,
 ) -> "Dataset":
-    dataset = load_dataset(path=path, split=split)
+    dataset = load_dataset(path=path, name='asearcher', split=split)
     if max_length is not None:
         # Filter out sequences longer than max_length
-        dataset = dataset.filter(lambda x: len(x["input_ids"]) <= max_length)
+        if "input_ids" in dataset.column_names:
+            dataset = dataset.filter(lambda x: len(x["input_ids"]) <= max_length)
+        elif tokenizer is not None:
+            # Tokenize and filter based on max_length
+            def tokenize_and_check_length(example):
+                input_ids = tokenizer(example["question"], return_tensors="pt").input_ids[0]
+                example["input_ids"] = input_ids
+                return len(input_ids) <= max_length
+
+            dataset = dataset.filter(tokenize_and_check_length)
     dataset = split_dataset_by_node(dataset, rank=rank, world_size=world_size)
     # TODO: need to create loss_mask or input_ids??
     return dataset
@@ -76,7 +85,7 @@ def main(args):
         path=config.train_dataset.path,
         rank=actor.data_parallel_rank,
         world_size=actor.data_parallel_world_size,
-        split="rl",
+        split="train",
         max_length=config.train_dataset.max_length,
         type=config.train_dataset.type,
         tokenizer=tokenizer,
@@ -85,7 +94,7 @@ def main(args):
         path=config.valid_dataset.path,
         rank=actor.data_parallel_rank,
         world_size=actor.data_parallel_world_size,
-        split="test",
+        split="train",
         max_length=config.valid_dataset.max_length,
         type=config.valid_dataset.type,
         tokenizer=tokenizer,
