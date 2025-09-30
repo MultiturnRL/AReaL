@@ -272,10 +272,9 @@ class AgentWorkflow(RolloutWorkflow):
 
         return (
             TensorDict(res, batch_size=[1]),
-            # prompt_str,
-            # completions_str,
+            messages,
             reward,
-            # len(seq),
+            len(messages),
         )
 
 
@@ -302,16 +301,15 @@ class AgentWorkflow(RolloutWorkflow):
             file_path = os.path.join(dump_path, f"{qid}.txt")
             async with aiofiles.open(file_path, "a") as f:
                 n_samples = self.gconfig.n_samples
-                for i, (_, reward) in enumerate(results):
-                    info = "\n".join(
-                        [
-                            f"idx: {i + 1} / {n_samples}",
-                            f"reward: {reward}",
-                            # f"messages:\n{colorama.Fore.YELLOW + colorama.Style.DIM}{json.dumps(completion.messages, indent=2)}{colorama.Style.RESET_ALL}",
-                            # f"response:\n{colorama.Fore.YELLOW + colorama.Style.DIM}{json.dumps(completion.response, indent=2)}{colorama.Style.RESET_ALL}",
-                        ]
-                    )
-                    await f.write(info + "\n")
+                trajectories = []
+                for i, (_, messages, reward, num_turns) in enumerate(results):
+                    trajectories.append({
+                        "messages": messages,
+                        "reward": reward,
+                        "idx": f"{i + 1} / {n_samples}",
+                        "num_turns": num_turns
+                    })
+                await f.write(json.dumps(trajectories, indent=2))
 
         data = [res[0] for res in results]
         return concat_padded_tensors(data)
