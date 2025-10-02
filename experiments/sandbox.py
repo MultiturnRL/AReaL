@@ -46,6 +46,10 @@ class Sandbox:
                 "ports": [{"container_port": 3000}],
                 "expose": "ClusterIP",
                 "replicas": 1,
+                "resources": {
+                    "requests": {"cpu": "500m", "memory": "512Mi"},
+                    "limits": {"cpu": "1000m", "memory": "1024Mi"},
+                },
             },
             headers={"Content-Type": "application/json"},
         ) as resp:

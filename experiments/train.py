@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from transformers.processing_utils import ProcessorMixin
     from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-from reward import reward_fn
 
 def get_dataset(
     path: str,
@@ -48,7 +47,7 @@ def get_dataset(
     tokenizer: Optional["PreTrainedTokenizerFast"] = None,
     processor: Optional["ProcessorMixin"] = None,
 ) -> "Dataset":
-    dataset = load_dataset(path=path, name='asearcher', split=split)
+    dataset = load_dataset(path=path, split=type)
     if max_length is not None:
         # Filter out sequences longer than max_length
         if "input_ids" in dataset.column_names:
@@ -56,9 +55,11 @@ def get_dataset(
         elif tokenizer is not None:
             # Tokenize and filter based on max_length
             def tokenize_and_check_length(example):
-                input_ids = tokenizer(example["question"], return_tensors="pt").input_ids[0]
-                example["input_ids"] = input_ids
-                return len(input_ids) <= max_length
+                input_ids = tokenizer.apply_chat_template(example["prompt"], tokenize=True, return_tensors="pt")
+                # Temporary disable SWE-Gym
+                if example['source'].startswith("SWE-Gym"):
+                    return False
+                return input_ids.shape[1] <= max_length
 
             dataset = dataset.filter(tokenize_and_check_length)
     dataset = split_dataset_by_node(dataset, rank=rank, world_size=world_size)
@@ -156,7 +157,6 @@ def main(args):
     if tokenizer.eos_token_id not in config.gconfig.stop_token_ids:
         config.gconfig.stop_token_ids.append(tokenizer.eos_token_id)
     workflow = AgentWorkflow(
-        reward_fn=reward_fn,
         gconfig=config.gconfig,
         config=config,
         tokenizer=tokenizer,
@@ -165,7 +165,6 @@ def main(args):
         ),
     )
     eval_workflow = AgentWorkflow(
-        reward_fn=reward_fn,
         gconfig=config.gconfig.new(temperature=0.6),
         tokenizer=tokenizer,
         config=config,

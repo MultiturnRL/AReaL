@@ -27,6 +27,8 @@ from mcp_client import MCPClient
 from sandbox import Sandbox
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
+from reward import reward_fn
+
 logger = logging.getLogger("Multi-Turn workflow")
 
 
@@ -68,12 +70,8 @@ async def call_tool(mcp_session: ClientSession, tool_name: str, tool_args: dict)
     result = await mcp_session.call_tool(tool_name, tool_args)
     return result
 
-def prepare_messages(data, prompt_key, system_prompt=None):
-    messages = []
-    if isinstance(system_prompt, str) and len(str) > 0:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": data[prompt_key]})
-    return messages
+def prepare_messages(data, prompt_key):
+    return data[prompt_key]
 
 def concat_sequence_dim(tensor_dicts: List[TensorDict]) -> TensorDict:
     """Concatenate tensors from multiple turns along sequence dimension."""
@@ -112,14 +110,12 @@ def concat_sequence_dim(tensor_dicts: List[TensorDict]) -> TensorDict:
 class AgentWorkflow(RolloutWorkflow):
     def __init__(
         self,
-        reward_fn,
         gconfig: GenerationHyperparameters,
         tokenizer: PreTrainedTokenizerFast,
         config: Config,
         rollout_stat_scope: str = "rollout",
         dump_dir: str | None = None,
     ):
-        self.reward_fn = reward_fn
         self.gconfig = gconfig
         self.tokenizer = tokenizer
         self.config = config
@@ -127,8 +123,6 @@ class AgentWorkflow(RolloutWorkflow):
         self.sandbox = Sandbox(base_url=config.sandbox_control_plane)
         self.sandbox_gateway = config.sandbox_gateway
         self.rollout_stat_scope = rollout_stat_scope
-        # self.async_reward_fn = AsyncRewardWrapper(reward_fn)
-        self.async_reward_fn = reward_fn
         self.dump_dir = dump_dir
         if self.dump_dir is not None and not os.path.exists(self.dump_dir):
             os.makedirs(self.dump_dir, exist_ok=True)
@@ -165,7 +159,7 @@ class AgentWorkflow(RolloutWorkflow):
             mcp = await mcp_client.attach_session(sandbox_uuid)
             tools = await mcp.list_tools()
             available_tools = [convert_tool_format(tool) for tool in tools.tools]
-            messages = prepare_messages(data, "question")
+            messages = prepare_messages(data, "prompt")
 
             assert available_tools is not None, f"Tool cannot be None, {tools}"
             
@@ -249,20 +243,21 @@ class AgentWorkflow(RolloutWorkflow):
                     )
                     
             try:
-                reward = self.async_reward_fn(
+                reward_info = await reward_fn(
                     example=data,
                     messages=messages,
                     mcp=mcp,
                     sandbox_uuid=sandbox_uuid,
+                    config=self.config,
                 )
-                client.set_reward(response.id, reward)
             except Exception:
                 logger.error(
-                    f"Reward function failed for problem {data['qid']}: {traceback.format_exc()}"
+                    f"Reward function failed for problem {data['uuid']}: {traceback.format_exc()}"
                 )
-                reward = {"score": 0, "metadata": {"error": "Reward function failed."}}
+                reward_info = {"score": 0, "metadata": {"error": "Reward function failed."}}
                 with open("reward_errors.log", "a") as f:
-                    f.write(f"{data['qid']}\n{traceback.format_exc()}\n\n")
+                    f.write(f"{data['uuid']}\n{traceback.format_exc()}\n\n")
+            client.set_reward(response.id, reward_info["score"])
         finally:
             await mcp_client.close_session()
             await self.sandbox.deprovision(sandbox_uuid)
@@ -273,7 +268,7 @@ class AgentWorkflow(RolloutWorkflow):
         return (
             TensorDict(res, batch_size=[1]),
             messages,
-            reward,
+            reward_info["score"],
             len(messages),
         )
 
