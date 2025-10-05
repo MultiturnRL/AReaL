@@ -23,11 +23,11 @@ from areal.utils import logging, stats_tracker
 from areal.utils.data import concat_padded_tensors
 
 from mcp import ClientSession
-from mcp_client import MCPClient
-from sandbox import Sandbox
+from .mcp_client import MCPClient
+from .sandbox import Sandbox
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
-from reward import reward_fn
+from .reward import reward_fn
 
 logger = logging.getLogger("Multi-Turn workflow")
 

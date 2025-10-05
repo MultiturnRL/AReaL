@@ -7,8 +7,8 @@ from math_verify import parse, verify
 from mcp import ClientSession
 from reasoning_gym import get_score_answer_fn
 
-from config import Config
-from sandbox_fusion import compute_score
+from .config import Config
+from .sandbox_fusion import compute_score
 
 
 def last_boxed_only_string(string):
