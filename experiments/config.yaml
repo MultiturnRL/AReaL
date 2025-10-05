@@ -1,6 +1,6 @@
 experiment_name: multiturn-grpo
 trial_name: grpo-multi-turn
-allocation_mode: sglang.d4p1t2+d2p1t4
+allocation_mode: sglang.d8p1t1+d2p1t4
 cluster:
   fileroot: /opt/dlami/nvme/exp
   n_nodes: 2
@@ -88,7 +88,7 @@ sglang:
   dtype: ${actor.dtype}
   max_running_requests: null
   context_length: 32768
-  mem_fraction_static: 0.8
+  mem_fraction_static: 0.6
 
 # datasets
 train_dataset:

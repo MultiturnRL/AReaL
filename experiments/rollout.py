@@ -315,5 +315,4 @@ class AgentWorkflow(RolloutWorkflow):
 
         data = [res[0] for res in results]
         tt = concat_padded_tensors(data)
-        logger.info(f"Rollout return shape: {tt.shape}")
         return tt
