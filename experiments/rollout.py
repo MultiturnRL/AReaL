@@ -270,7 +270,7 @@ class AgentWorkflow(RolloutWorkflow):
             await self.sandbox.deprovision(sandbox_uuid)
         completions = client.export_completions()
         tensor_dicts = [completions[key].to_tensor_dict() for key in completions]
-        res = concat_sequence_dim(tensor_dicts)
+        res = concat_sequence_dim(tensor_dicts, self.config)
 
         return (
             TensorDict(res, batch_size=[1]),
