@@ -71,7 +71,7 @@ async def call_tool(mcp_session: ClientSession, tool_name: str, tool_args: dict)
     return result
 
 def prepare_messages(data, prompt_key):
-    return data[prompt_key]
+    return deepcopy(data[prompt_key])
 
 def concat_sequence_dim(tensor_dicts: List[TensorDict], config: Config) -> TensorDict:
     """Concatenate tensors from multiple turns along sequence dimension."""
@@ -195,7 +195,7 @@ class AgentWorkflow(RolloutWorkflow):
                             messages += [
                                 {
                                     "role": "user",
-                                    "content": "Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response."
+                                    "content": f"Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response. Below are tools that you are provided:\n {json.dumps(available_tools)}"
                                 }
                             ]
                             logger.info(f"Tool call is empty, reprompt to generate new response {content}")
@@ -315,5 +315,4 @@ class AgentWorkflow(RolloutWorkflow):
 
         data = [res[0] for res in results]
         tt = concat_padded_tensors(data)
-        logger.info(f"Rollout return shape: {tt.shape}")
         return tt
