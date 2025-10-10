@@ -1,0 +1,16 @@
+name: areal-train-setup
+
+resources:
+  accelerators: H200:8
+
+setup: |
+  set -e
+  # Install project dependencies.
+  bash examples/env/setup-pip-deps.sh
+  # Extra packages required for the experiments.
+  pip install --upgrade pip
+  pip install "mcp[cli]" reasoning-gym math-verify anthropic
+
+run: |
+  echo "Machine ready for manual debugging. SSH in via \`sky ssh\`."
+  # python3 -m areal.launcher.local experiments/train.py --config experiments/config.yml experiment_name=$experiment_name trial_name=trial_name

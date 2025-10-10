@@ -282,12 +282,13 @@ def main(args):
             def evaluate_fn():
                 # Stats are logged in the workflow
                 # and will be exported later
-                cnt = 0
                 for data in valid_dataloader:
+                    batch_cnt = 0
                     for item in data:
                         eval_rollout.submit(item, eval_workflow)
-                        cnt += 1
-                eval_rollout.wait(cnt, timeout=None)
+                        batch_cnt += 1
+                    if batch_cnt > 0:
+                        eval_rollout.wait(batch_cnt, timeout=None)
 
             evaluator.evaluate(
                 evaluate_fn,
