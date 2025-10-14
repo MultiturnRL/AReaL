@@ -58,7 +58,7 @@ async def call_llm(
     api_client: ArealOpenAI,
 ):
     response = await api_client.chat.completions.create(
-        messages=messages, tools=tools
+        messages=messages, tools=tools, max_tokens=16384, max_completion_tokens=16384
     )
     return response
 
@@ -69,9 +69,6 @@ async def call_llm(
 async def call_tool(mcp_session: ClientSession, tool_name: str, tool_args: dict):
     result = await mcp_session.call_tool(tool_name, tool_args)
     return result
-
-def prepare_messages(data, prompt_key):
-    return deepcopy(data[prompt_key])
 
 def concat_sequence_dim(tensor_dicts: List[TensorDict], config: Config) -> TensorDict:
     """Concatenate tensors from multiple turns along sequence dimension."""
@@ -166,11 +163,9 @@ class AgentWorkflow(RolloutWorkflow):
             mcp = await mcp_client.attach_session(sandbox_uuid)
             tools = await mcp.list_tools()
             available_tools = [convert_tool_format(tool) for tool in tools.tools]
-            messages = prepare_messages(data, "prompt")
-
             assert available_tools is not None, f"Tool cannot be None, {tools}"
-            
-            
+            messages = deepcopy(data["prompt"])
+
             for _ in range(self.max_turns):
                 response = await call_llm(
                     messages=messages,

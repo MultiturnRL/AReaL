@@ -1,6 +1,6 @@
 experiment_name: multiturn-grpo
 trial_name: grpo-multiturn-training
-allocation_mode: sglang.d4p1t1+d2p1t2
+allocation_mode: sglang.d4p1t1+d4p1t1
 cluster:
   fileroot: /opt/dlami/nvme/exp
   n_nodes: 1
@@ -25,14 +25,14 @@ rollout:
 gconfig:
   n_samples: 4
   min_new_tokens: 0
-  max_new_tokens: 1024
+  max_new_tokens: 8192
   greedy: false
-  temperature: 1.0
+  temperature: 0.3
 
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: mliu444/Multi-turn-SFT-198
+  path: Qwen/Qwen3-4B-Instruct-2507
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: false
@@ -92,13 +92,13 @@ sglang:
 
 # datasets
 train_dataset:
-  batch_size: 256
+  batch_size: 32
   shuffle: true
   pin_memory: true
   num_workers: 4
   path: MultiturnRL/training-dataset
   type: rl
-  max_length: 1024
+  max_length: 2048
 
 valid_dataset:
   batch_size: 256
@@ -118,12 +118,12 @@ saver:
   freq_secs: null
 
 recover:
-  mode: auto
+  mode: disabled
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
   fileroot: ${cluster.fileroot}
   freq_epochs: null
-  freq_steps: 2
+  freq_steps: null
   freq_secs: null
 
 evaluator:
@@ -140,7 +140,7 @@ stats_logger:
   fileroot: ${cluster.fileroot}
   wandb:
     mode: online
-    project: grpo-multiturns-training
+    project: grpo-multiturn-training-sft-sss
 
 launcher:
   inference_server_cpus_per_gpu: 4
