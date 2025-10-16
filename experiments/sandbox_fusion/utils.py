@@ -23,10 +23,10 @@ from typing import Any, Optional
 
 import requests
 
-DEFAULT_TIMEOUT = 10  # Default compile and run timeout
-MAX_RETRIES = 3
+DEFAULT_TIMEOUT = 60  # Default compile and run timeout
+MAX_RETRIES = 6
 INITIAL_RETRY_DELAY = 1
-API_TIMEOUT = 10
+API_TIMEOUT = 60
 
 logger = logging.getLogger(__name__)
 

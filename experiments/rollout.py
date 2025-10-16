@@ -5,7 +5,7 @@ import traceback
 from typing import List
 import uuid
 import json
-
+from functools import cache
 import aiofiles
 import aiofiles.os
 import colorama
@@ -22,8 +22,7 @@ from areal.api.workflow_api import RolloutWorkflow
 from areal.utils import logging, stats_tracker
 from areal.utils.data import concat_padded_tensors
 
-from mcp import ClientSession
-from mcp_client import MCPClient
+from fastmcp_client import get_mcp_client
 from sandbox import Sandbox
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
@@ -66,8 +65,8 @@ async def call_llm(
     stop=stop_after_attempt(5),
     wait=wait_random_exponential(multiplier=1, min=0, max=60),
 )
-async def call_tool(mcp_session: ClientSession, tool_name: str, tool_args: dict):
-    result = await mcp_session.call_tool(tool_name, tool_args)
+async def call_tool(mcp_session, tool_name, tool_args):
+    result = await mcp_session.call_tool(tool_name, tool_args, timeout=60)
     return result
 
 def concat_sequence_dim(tensor_dicts: List[TensorDict], config: Config) -> TensorDict:
@@ -146,6 +145,14 @@ class AgentWorkflow(RolloutWorkflow):
             messages, tokenize=True, add_generation_prompt=True
         )
         self.multi_turn_prompt_ids = s2[len(s1) :]
+        self.tools = None
+
+        
+    @cache
+    async def load_tools(self, mcp):
+        if self.tools is None:
+            self.tools = await mcp.list_tools()
+        return self.tools
 
     async def _run_one_episode(self, engine: InferenceEngine, data):
         sandbox_uuid = await self.sandbox.spawn(
@@ -154,115 +161,124 @@ class AgentWorkflow(RolloutWorkflow):
             else image
         )
         await asyncio.sleep(10)
-        logger.info(f"Spawned sandbox with UUID: {sandbox_uuid}")
+        # logger.info(f"Spawned sandbox with UUID: {sandbox_uuid}")
         client = ArealOpenAI(engine=engine, tokenizer=self.tokenizer, tool_call_parser='qwen25')
-
-        mcp_client = MCPClient(self.sandbox_gateway)
-
+        mcp = get_mcp_client(self.sandbox_gateway, sandbox_uuid)
         try:
-            mcp = await mcp_client.attach_session(sandbox_uuid)
-            tools = await mcp.list_tools()
-            available_tools = [convert_tool_format(tool) for tool in tools.tools]
-            assert available_tools is not None, f"Tool cannot be None, {tools}"
-            messages = deepcopy(data["prompt"])
+            async with mcp:
+                start_time = asyncio.get_event_loop().time()
+                while not mcp.is_connected():
+                    if asyncio.get_event_loop().time() - start_time > 30:
+                        raise TimeoutError("Sandbox connection timeout after 30 seconds")
+                    print("Sandbox not available yet...")
+                    await asyncio.sleep(2)
+                tools = await self.load_tools(mcp)
+                available_tools = [convert_tool_format(tool) for tool in tools]
+                assert available_tools is not None, f"Tool cannot be None, {tools}"
+                messages = deepcopy(data["prompt"])
 
-            for _ in range(self.max_turns):
-                response = await call_llm(
-                    messages=messages,
-                    tools=available_tools,
-                    api_client=client,
-                )
-                if response.choices is None:
-                    logger.error("LLM returned no choices.")
-                    break
-                messages.append(response.choices[0].message.model_dump())
-                content = response.choices[0].message
-
-                comp_data = client.get_completions(response.id)
-
-                if content.tool_calls is None:
-                    if content.content:
+                for _ in range(self.max_turns):
+                    response = await call_llm(
+                        messages=messages,
+                        tools=available_tools,
+                        api_client=client,
+                    )
+                    if response.choices is None:
+                        logger.error("LLM returned no choices.")
                         break
-                    continue
-                if len(content.tool_calls) == 0:
-                    if content.content:
-                        if '<tool_call>' in content.content:
+                    messages.append(response.choices[0].message.model_dump())
+                    content = response.choices[0].message
+
+                    comp_data = client.get_completions(response.id)
+
+                    if content.tool_calls is None:
+                        if content.content:
+                            break
+                        continue
+                    if len(content.tool_calls) == 0:
+                        if content.content:
+                            if '<tool_call>' in content.content:
+                                messages += [
+                                    {
+                                        "role": "user",
+                                        "content": f"Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response. Below are tools that you are provided:\n {json.dumps(available_tools)}"
+                                    }
+                                ]
+                                logger.info(f"Tool call is empty, reprompt to generate new response {content}")
+                                continue
+                            else:
+                                break
+                        else:
                             messages += [
                                 {
                                     "role": "user",
-                                    "content": f"Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response. Below are tools that you are provided:\n {json.dumps(available_tools)}"
+                                    "content": "You don't give any answer, review the question and chat history and continue answer the question."
                                 }
                             ]
-                            logger.info(f"Tool call is empty, reprompt to generate new response {content}")
                             continue
-                        else:
-                            break
-                    else:
-                        messages += [
+
+
+                    logger.info(
+                        f"Calling tool: {content.tool_calls[0].function.name}({content.tool_calls[0].function.arguments})"
+                    )
+
+                    tool_name = content.tool_calls[0].function.name
+                    tool_args = content.tool_calls[0].function.arguments
+                    try:
+                        tool_args = json.loads(tool_args) if tool_args else {}
+                        result = await call_tool(mcp, tool_name, tool_args)
+                        messages.append(
                             {
-                                "role": "user",
-                                "content": "You don't give any answer, review the question and chat history and continue answer the question."
+                                "role": "tool",
+                                "tool_call_id": content.tool_calls[0].id,
+                                "name": tool_name,
+                                "content": [c.model_dump() for c in result.content],
                             }
-                        ]
-                        continue
-
-
-                logger.info(
-                    f"Calling tool: {content.tool_calls[0].function.name}({content.tool_calls[0].function.arguments})"
-                )
-
-                tool_name = content.tool_calls[0].function.name
-                tool_args = content.tool_calls[0].function.arguments
+                        )
+                    except json.JSONDecodeError:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": content.tool_calls[0].id,
+                                "name": tool_name,
+                                "content": "Error: Malformed tool arguments.",
+                            }
+                        )
+                    except Exception as e:
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": content.tool_calls[0].id,
+                                "name": tool_name,
+                                "content": f"Error: {str(e)}",
+                            }
+                        )
+                        
                 try:
-                    tool_args = json.loads(tool_args) if tool_args else {}
-                    result = await call_tool(mcp, tool_name, tool_args)
-
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": content.tool_calls[0].id,
-                            "name": tool_name,
-                            "content": [c.model_dump() for c in result.content],
-                        }
+                    reward_info = await reward_fn(
+                        example=data,
+                        messages=messages,
+                        mcp=mcp,
+                        sandbox_uuid=sandbox_uuid,
+                        config=self.config,
                     )
-                except json.JSONDecodeError:
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": content.tool_calls[0].id,
-                            "name": tool_name,
-                            "content": "Error: Malformed tool arguments.",
-                        }
+                except Exception:
+                    logger.error(
+                        f"Reward function failed for problem {data['uuid']}: {traceback.format_exc()}"
                     )
-                except Exception as e:
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": content.tool_calls[0].id,
-                            "name": tool_name,
-                            "content": f"Error: {str(e)}",
-                        }
-                    )
-                    
-            try:
-                reward_info = await reward_fn(
-                    example=data,
-                    messages=messages,
-                    mcp=mcp,
-                    sandbox_uuid=sandbox_uuid,
-                    config=self.config,
-                )
-            except Exception:
-                logger.error(
-                    f"Reward function failed for problem {data['uuid']}: {traceback.format_exc()}"
-                )
-                reward_info = {"score": 0, "metadata": {"error": "Reward function failed."}}
-                with open("reward_errors.log", "a") as f:
-                    f.write(f"{data['uuid']}\n{traceback.format_exc()}\n\n")
-            client.set_reward(response.id, reward_info["score"])
+                    reward_info = {"score": 0, "metadata": {"error": "Reward function failed."}}
+                    with open("reward_errors.log", "a") as f:
+                        f.write(f"{data['uuid']}\n{traceback.format_exc()}\n\n")
+                client.set_reward(response.id, reward_info["score"])
+        except Exception:
+            return None
         finally:
-            await mcp_client.close_session()
-            await self.sandbox.deprovision(sandbox_uuid)
+            try:
+                async with asyncio.timeout(10.0):
+                    await self.sandbox.deprovision(sandbox_uuid)
+            except Exception:
+                pass
+
         completions = client.export_completions()
         tensor_dicts = [completions[key].to_tensor_dict() for key in completions]
         res = concat_sequence_dim(tensor_dicts, self.config)
@@ -281,6 +297,7 @@ class AgentWorkflow(RolloutWorkflow):
             for _ in range(self.gconfig.n_samples)
         ]
         results = await asyncio.gather(*tasks)
+        results = [result for result in results if result is not None]
 
         if self.dump_dir is not None:
             version = engine.get_version()
@@ -297,7 +314,7 @@ class AgentWorkflow(RolloutWorkflow):
             # Dump rollout to file
             file_path = os.path.join(dump_path, f"{qid}.txt")
             async with aiofiles.open(file_path, "a") as f:
-                n_samples = self.gconfig.n_samples
+                n_samples = len(results)
                 trajectories = []
                 for i, (_, messages, reward, num_turns) in enumerate(results):
                     trajectories.append({
