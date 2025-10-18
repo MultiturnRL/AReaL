@@ -155,16 +155,17 @@ class AgentWorkflow(RolloutWorkflow):
         return self.tools
 
     async def _run_one_episode(self, engine: InferenceEngine, data):
-        sandbox_uuid = await self.sandbox.spawn(
-            image=data["sandbox"]["image"] 
-            if (image := self.config.sandbox_image_override) is None
-            else image
-        )
-        await asyncio.sleep(10)
-        # logger.info(f"Spawned sandbox with UUID: {sandbox_uuid}")
-        client = ArealOpenAI(engine=engine, tokenizer=self.tokenizer, tool_call_parser='qwen25')
-        mcp = get_mcp_client(self.sandbox_gateway, sandbox_uuid)
+        sandbox_uuid = None
         try:
+            sandbox_uuid = await self.sandbox.spawn(
+                image=data["sandbox"]["image"] 
+                if (image := self.config.sandbox_image_override) is None
+                else image
+            )
+            await asyncio.sleep(10)
+            # logger.info(f"Spawned sandbox with UUID: {sandbox_uuid}")
+            client = ArealOpenAI(engine=engine, tokenizer=self.tokenizer, tool_call_parser='qwen25')
+            mcp = get_mcp_client(self.sandbox_gateway, sandbox_uuid)
             async with mcp:
                 start_time = asyncio.get_event_loop().time()
                 while not mcp.is_connected():
@@ -270,14 +271,20 @@ class AgentWorkflow(RolloutWorkflow):
                     with open("reward_errors.log", "a") as f:
                         f.write(f"{data['uuid']}\n{traceback.format_exc()}\n\n")
                 client.set_reward(response.id, reward_info["score"])
-        except Exception:
+        except Exception as e:
+            logger.error(e)
             return None
         finally:
-            try:
-                async with asyncio.timeout(10.0):
-                    await self.sandbox.deprovision(sandbox_uuid)
-            except Exception:
-                pass
+            if sandbox_uuid is not None:
+                try:
+                    async with asyncio.timeout(30.0):
+                        await self.sandbox.deprovision(sandbox_uuid)
+                except Exception:
+                    logger.error(f"Failed to deprovision sandbox {sandbox_uuid}: {traceback.format_exc()}")
+                    with open("deprovision_errors.log", "a") as f:
+                        f.write(f"{sandbox_uuid}\n")
+            else:
+                logger.error("Failed to spawn sandbox")
 
         completions = client.export_completions()
         tensor_dicts = [completions[key].to_tensor_dict() for key in completions]
@@ -298,6 +305,14 @@ class AgentWorkflow(RolloutWorkflow):
         ]
         results = await asyncio.gather(*tasks)
         results = [result for result in results if result is not None]
+        if len(results) < self.gconfig.n_samples:
+            # If we don't have enough successful results, pad with the last successful result
+            if results:
+                while len(results) < self.gconfig.n_samples:
+                    results.extend(results[:min(len(results), self.gconfig.n_samples - len(results))])
+            else:
+                # If no results at all, return None or handle appropriately
+                return None
 
         if self.dump_dir is not None:
             version = engine.get_version()

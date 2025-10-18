@@ -1,6 +1,6 @@
 experiment_name: multiturn-grpo
 trial_name: grpo-multiturn-training
-allocation_mode: sglang.d4p1t1+d1p1t4
+allocation_mode: sglang.d2p1t2+d1p1t4
 cluster:
   fileroot: /opt/dlami/nvme/exp
   n_nodes: 1
@@ -27,21 +27,21 @@ gconfig:
   min_new_tokens: 0
   max_new_tokens: 8192
   greedy: false
-  temperature: 0.3
+  temperature: 0.6
 
 actor:
   experiment_name: ${experiment_name}
   trial_name: ${trial_name}
-  path: Qwen/Qwen3-4B-Instruct-2507
+  path: mliu444/Multi-turn-SFT-198
   init_from_scratch: false
   disable_dropout: true
   gradient_checkpointing: false
   dtype: bfloat16
   mb_spec:
-    max_tokens_per_mb: 32768
+    max_tokens_per_mb: 16384
   optimizer:
     type: adam
-    lr: 1.0e-6
+    lr: 2e-7
     weight_decay: 0.017
     beta1: 0.9
     beta2: 0.999
@@ -51,12 +51,12 @@ actor:
     warmup_steps_proportion: 0.001
   backend: fsdp
   group_size: ${gconfig.n_samples}
-  eps_clip: 0.4
+  eps_clip: 0.2
   temperature: ${gconfig.temperature}
-  reward_scaling: 10.0
-  reward_bias: -0.5
-  kl_ctl: 0.0
-  ppo_n_minibatches: 1
+  reward_scaling: 2.0
+  reward_bias: 0.0
+  kl_ctl: 0.05
+  ppo_n_minibatches: 4
   recompute_logprob: true
   use_decoupled_loss: true
   behav_imp_weight_cap: 5.0
@@ -76,7 +76,7 @@ ref:
   disable_dropout: true
   dtype: ${actor.dtype}
   mb_spec:
-    max_tokens_per_mb: 32768
+    max_tokens_per_mb: 16384
   optimizer: null
   backend: fsdp
 
@@ -140,8 +140,8 @@ stats_logger:
   fileroot: ${cluster.fileroot}
   wandb:
     mode: online
-    name: grpo-qwen-4b-instructs
-    project: grpo-multiturn-training
+    name: ${trial_name}
+    project: ${experiment_name}
 
 launcher:
   inference_server_cpus_per_gpu: 4
@@ -149,8 +149,8 @@ launcher:
   trainer_cpus_per_gpu: 4
   trainer_mem_per_gpu: 32768
 
-sandbox_control_plane: http://a8b4ee4606659412ca97fd13254655e1-1667785203.us-west-2.elb.amazonaws.com
-sandbox_gateway: http://a8ba3420c90c64b2da804891c7d96d2f-2109523366.us-west-2.elb.amazonaws.com
+sandbox_control_plane: http://a8b4ee4606659412ca97fd13254655e1-1332289600.us-west-2.elb.amazonaws.com
+sandbox_gateway: http://a8ba3420c90c64b2da804891c7d96d2f-1217634634.us-west-2.elb.amazonaws.com
 sandbox_fusion_url: http://localhost:8080/run_code
 sandbox_image_override: timemagic/rl-mcp:general-1.7
 max_turns: 100
