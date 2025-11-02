@@ -7,6 +7,7 @@ from typing import Optional
 from experiments.config import Config
 import torch.distributed as dist
 from torchdata.stateful_dataloader import StatefulDataLoader
+from tqdm import tqdm
 
 from experiments.rollout import AgentWorkflow
 from areal.api.alloc_mode import AllocationMode
@@ -36,6 +37,9 @@ if TYPE_CHECKING:
     from transformers.processing_utils import ProcessorMixin
     from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
+import logging
+
+logging.getLogger().setLevel(logging.WARNING)
 
 def get_dataset(
     path: str,
@@ -200,7 +204,7 @@ def main(args):
     max_steps = total_epochs * steps_per_epoch
 
     data_generator = itertools.cycle(train_dataloader)
-    for global_step in range(start_step, max_steps):
+    for global_step in tqdm(range(start_step, max_steps), desc="Training Progress"):
         epoch = global_step // steps_per_epoch
         step = global_step % steps_per_epoch
         step_info = StepInfo(

@@ -29,6 +29,7 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from reward import reward_fn
 
 logger = logging.getLogger("Multi-Turn workflow")
+logger.setLevel(logging.WARNING)
 
 
 def convert_tool_format(tool):
