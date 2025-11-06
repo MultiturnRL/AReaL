@@ -278,7 +278,7 @@ class AgentWorkflow(RolloutWorkflow):
         finally:
             if sandbox_uuid is not None:
                 try:
-                    async with asyncio.timeout(30.0):
+                    async with asyncio.timeout(300.0):
                         await self.sandbox.deprovision(sandbox_uuid)
                 except Exception:
                     logger.error(f"Failed to deprovision sandbox {sandbox_uuid}: {traceback.format_exc()}")

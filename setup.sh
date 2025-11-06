@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euox pipefail
 
-apt update && apt install -y libnuma-dev tmux docker.io
+sudo apt update && sudo apt install -y libnuma-dev tmux
 
-grep -qxF 'export HF_HOME=/workspace/hf' ~/.bashrc || echo 'export HF_HOME=/workspace/hf' >> ~/.bashrc
-mkdir -p /workspace/hf
+#grep -qxF 'export HF_HOME=/workspace/hf' ~/.bashrc || echo 'export HF_HOME=/workspace/hf' >> ~/.bashrc
+#mkdir -p /workspace/hf
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
