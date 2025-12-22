@@ -35,10 +35,10 @@ actor:
   path: mliu444/MultiTurn-Qwen3-8B-SFT
   init_from_scratch: false
   disable_dropout: true
-  gradient_checkpointing: false
+  gradient_checkpointing: true
   dtype: bfloat16
   mb_spec:
-    max_tokens_per_mb: 16384
+    max_tokens_per_mb: 32768
   optimizer:
     type: adam
     lr: 1.0e-6
@@ -76,7 +76,7 @@ ref:
   disable_dropout: true
   dtype: ${actor.dtype}
   mb_spec:
-    max_tokens_per_mb: 16384
+    max_tokens_per_mb: 32768
   optimizer: null
   backend: fsdp
 
