@@ -202,7 +202,7 @@ class AgentWorkflow(RolloutWorkflow):
                                 messages += [
                                     {
                                         "role": "user",
-                                        "content": f"Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response. Below are tools that you are provided:\n {json.dumps(available_tools)}"
+                                        "content": f"Your tool call format or argument is incorrect or use a tool not provided to you, you need to carefully review the tools provided to you and regenerate your response."
                                     }
                                 ]
                                 logger.info(f"Tool call is empty, reprompt to generate new response {content}")
